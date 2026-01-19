@@ -46,13 +46,6 @@ Nome: CONVISO_API_KEY
 Valor: [sua-api-key-do-conviso]
 ```
 
-4. (Opcional) Adicione:
-
-```
-Nome: SLACK_WEBHOOK_URL
-Valor: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
-```
-
 ### Via GitHub CLI
 
 ```bash
@@ -67,9 +60,6 @@ gh auth login
 # Adicionar secrets
 gh secret set CONVISO_API_KEY
 # Cole sua API key quando solicitado
-
-gh secret set SLACK_WEBHOOK_URL
-# Cole sua webhook URL quando solicitado
 ```
 
 ## Passo 3: Obter API Key do Conviso (1 min)
