@@ -8,16 +8,16 @@ on:
         required: true
         type: string
       project_id:
-        description: 'Conviso Project ID (Onde os findings serão abertos)'
+        description: 'Conviso Project ID'
         required: true
         type: string
       asset_id:
-        description: 'Conviso Asset ID (ID do ativo alvo)'
+        description: 'Conviso Asset ID'
         required: true
         type: string
       company_id:
-        description: 'Conviso Company ID (Opcional - Apenas contexto)'
-        required: false
+        description: 'Conviso Company ID (Obrigatório para contexto)'
+        required: true
         type: string
       scope:
         description: 'Recon Scope'
@@ -214,12 +214,12 @@ jobs:
           path: AI_RECON_REPORT.md
 
   # ============================================
-  # JOB 7: Conviso Integration (TOTALMENTE NOVO)
+  # JOB 7: Conviso Integration (ATUALIZADO)
   # ============================================
   conviso-integration:
     name: 📤 Send to Conviso
     runs-on: ubuntu-latest
-    needs: [process-findings, ai-analysis]
+    # needs: [process-findings, ai-analysis] # Descomente se usar os jobs anteriores
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -231,10 +231,13 @@ jobs:
         env:
           CONVISO_API_KEY: ${{ secrets.CONVISO_API_KEY }}
         run: |
-          mv normalized-findings/normalized-findings.json .
-          mv ai-report/AI_RECON_REPORT.md .
+          # Move arquivos (ajuste conforme nomes dos seus artifacts)
+          mv normalized-findings/normalized-findings.json . || true
+          mv ai-report/AI_RECON_REPORT.md . || true
           
+          # Passando o Company ID como 4º argumento
           python3 scripts/conviso_integration.py \
             normalized-findings.json \
             "${{ github.event.inputs.project_id }}" \
-            "${{ github.event.inputs.asset_id }}"
+            "${{ github.event.inputs.asset_id }}" \
+            "${{ github.event.inputs.company_id }}"
