@@ -226,16 +226,28 @@ jobs:
           SCAN_ID: ${{ github.run_id }}
         run: |
           mkdir -p stealth-report
-          
+
           # Header usando printf (evita YAML parsing)
           printf "# 🥷 STEALTH RECON REPORT\n**Target:** %s\n**Stealth:** %s\n**Max Rate:** %s req/s\n**Scan ID:** %s\n\n## 📊 SUMMARY\n" \
             "$DOMAIN" "$STEALTH_LEVEL" "$MAX_RATE" "$SCAN_ID" > stealth-report/STEALTH-RECON.md
           
           # Stats
           SUBS=$(find results/ -name "*subdomains*" -exec cat {} + 2>/dev/null | wc -l 2>/dev/null || echo 0)
-          LIVE=$(cat results/*/live.json 2>/dev/null | jq length 2>/dev/null || echo 0)
+          # Correção para leitura segura do JSONL do httpx
+          LIVE=$(cat results/*/live.json 2>/dev/null | wc -l 2>/dev/null || echo 0)
           VULN=$(cat results/*/nuclei.jsonl 2>/dev/null | wc -l 2>/dev/null || echo 0)
           
-          # Table
-          cat >> stealth-report/STEALTH-RECON.md << 'TABLE_EOF'
+          cat >> stealth-report/STEALTH-RECON.md << TABLE_EOF
+          | Metric | Count |
+          | :--- | :--- |
+          | 🌐 Subdomains Found | $SUBS |
+          | 🟢 Live Hosts | $LIVE |
+          | 🚨 Vulnerabilities | $VULN |
+          TABLE_EOF
+
+      - name: Upload Final Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: Final-Stealth-Report
+          path: stealth-report/
 
