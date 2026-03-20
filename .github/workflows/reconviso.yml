@@ -211,7 +211,6 @@ jobs:
           name: stealth-vuln
           path: output/vuln/
 
-  # 4. REPORT FINAL (CORRIGIDO)
   stealth-report:
     name: Final Report
     runs-on: ubuntu-latest
@@ -224,15 +223,19 @@ jobs:
           merge-multiple: true
 
       - name: Generate Report
+        env:
+          DOMAIN: ${{ needs.setup.outputs.domain }}
+          STEALTH_LEVEL: ${{ github.event.inputs.stealth_level }}
+          MAX_RATE: ${{ needs.setup.outputs.max_rate }}
+          SCAN_ID: ${{ github.run_id }}
         run: |
           mkdir -p stealth-report
-          DOMAIN="${{ needs.setup.outputs.domain }}"
           
           cat > stealth-report/STEALTH-RECON.md << EOF
-# STEALTH RECON REPORT
+# RECON REPORT
 **Target:** $DOMAIN 
-**Stealth:** ${{ github.event.inputs.stealth_level }} 
-**Max Rate:** ${{ needs.setup.outputs.max_rate }} req/s
+**Stealth:** $STEALTH_LEVEL 
+**Max Rate:** $MAX_RATE req/s
 **Scan ID:** $SCAN_ID
 
 ## SUMMARY
@@ -243,3 +246,4 @@ EOF
           VULN=$(cat results/*/nuclei.jsonl 2>/dev/null | wc -l)
           
           cat >> stealth-report/STEALTH-RECON.md << EOF
+
