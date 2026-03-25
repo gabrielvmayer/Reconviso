@@ -195,7 +195,7 @@ jobs:
           
           nuclei -l targets.txt \
             -tags misconfiguration,http-headers,cve,file,exposure \
-            -severity medium,high,critical \
+            -severity notification,low,medium,high,critical \
             -c $THREADS \
             -rl $MAX_RATE \
             -timeout $TIMEOUT \
