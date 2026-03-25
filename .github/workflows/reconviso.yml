@@ -79,7 +79,7 @@ jobs:
           go install github.com/tomnomnom/waybackurls@latest
           go install github.com/tomnomnom/unfurl@latest
           go install github.com/tomnomnom/anew@latest
-          go install software.sslmate.com/src/certspotter/cmd/certspotter@latest
+          go install github.com/glebarez/cero@latest
 
       - name: Passive Recon
         run: |
@@ -88,24 +88,28 @@ jobs:
           
           case "${{ matrix.type }}" in
             "subdomains")
-              subfinder -d $DOMAIN -silent -t 50 -o output/passive/subdomains.txt
+              subfinder -d $DOMAIN -silent -t 50 -o output/passive/subfinder.txt || true
+              curl -s "https://crt.sh/?q=%25.$DOMAIN&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' > output/passive/crtsh.txt || true
+              cat output/passive/subfinder.txt output/passive/crtsh.txt | sort -u > output/passive/subdomains.txt
+              
+              # 🔥 A CORREÇÃO MÁGICA: GARANTINDO O DOMÍNIO RAIZ 🔥
+              echo $DOMAIN >> output/passive/subdomains.txt
               sort -u output/passive/subdomains.txt -o output/passive/subdomains.txt
               ;;
             "urls")
-              gau --threads 5 --subs $DOMAIN > output/passive/urls.txt
-              echo $DOMAIN | waybackurls >> output/passive/urls.txt
+              gau --threads 5 --subs $DOMAIN > output/passive/urls.txt || true
+              echo $DOMAIN | waybackurls >> output/passive/urls.txt || true
               cat output/passive/urls.txt | sort -u | \
-                grep -E '\.(txt|xml|json|bak|old|backup|config)' > output/passive/urls_juicy.txt
-              cat output/passive/urls.txt | unfurl paths | sort -u > output/passive/paths.txt
-              cat output/passive/urls.txt | unfurl keys | sort -u > output/passive/params.txt
+                grep -E '\.(txt|xml|json|bak|old|backup|config|env)' > output/passive/urls_juicy.txt || true
+              cat output/passive/urls.txt | unfurl paths | sort -u > output/passive/paths.txt || true
+              cat output/passive/urls.txt | unfurl keys | sort -u > output/passive/params.txt || true
               ;;
             "dns")
-              echo $DOMAIN | dnsx -silent -json -o output/passive/dns.json
-              jq -r '.host' output/passive/dns.json | sort -u > output/passive/all-hosts.txt
+              echo $DOMAIN | dnsx -silent -json -o output/passive/dns.json || true
+              jq -r '.host' output/passive/dns.json | sort -u > output/passive/all-hosts.txt || true
               ;;
             "certs")
-              certspotter -scope "${{ needs.setup.outputs.scope }}" | \
-                grep -i "${{ needs.setup.outputs.domain }}" | sort -u > output/passive/certs.txt
+              cero $DOMAIN > output/passive/certs.txt || true
               ;;
           esac
 
@@ -156,7 +160,7 @@ jobs:
           name: stealth-active
           path: output/active/
 
-  # 3. STEALTH VULN SCAN (CRÍTICO SOMENTE)
+  # 3. STEALTH VULN SCAN (OTIMIZADO SEM HEADLESS)
   stealth-vuln:
     name: Stealth Vuln Scan
     runs-on: ubuntu-latest
@@ -185,7 +189,7 @@ jobs:
       - name: Stealth Nuclei
         env:
           MAX_RATE: ${{ needs.setup.outputs.max_rate }}
-          THREADS: 1
+          THREADS: 10
           TIMEOUT: 8
         run: |
           mkdir -p output/vuln
@@ -193,13 +197,14 @@ jobs:
           cat stealth-active/live.json | jq -r '.url' >> targets.txt 2>/dev/null || true
           sort -u targets.txt -o targets.txt
           
+          # Sem o -headless para ir rápido e pegando infos/lows também
           nuclei -l targets.txt \
             -tags misconfiguration,http-headers,cve,file,exposure \
             -severity info,low,medium,high,critical \
             -c $THREADS \
             -rl $MAX_RATE \
             -timeout $TIMEOUT \
-            -headless -silent \
+            -silent \
             -jsonl -o output/vuln/nuclei.jsonl
 
       - uses: actions/upload-artifact@v4
@@ -207,6 +212,7 @@ jobs:
           name: stealth-vuln
           path: output/vuln/
 
+  # 4. RELATÓRIO FINAL
   stealth-report:
     name: Final Report
     runs-on: ubuntu-latest
@@ -226,16 +232,14 @@ jobs:
           SCAN_ID: ${{ github.run_id }}
         run: |
           mkdir -p stealth-report
-
-          # Header usando printf (evita YAML parsing)
+          # Header
           printf "# 🥷 STEALTH RECON REPORT\n**Target:** %s\n**Stealth:** %s\n**Max Rate:** %s req/s\n**Scan ID:** %s\n\n## 📊 SUMMARY\n" \
             "$DOMAIN" "$STEALTH_LEVEL" "$MAX_RATE" "$SCAN_ID" > stealth-report/STEALTH-RECON.md
           
-          # Stats
-          SUBS=$(find results/ -name "*subdomains*" -exec cat {} + 2>/dev/null | wc -l 2>/dev/null || echo 0)
-          # Correção para leitura segura do JSONL do httpx
-          LIVE=$(cat results/*/live.json 2>/dev/null | wc -l 2>/dev/null || echo 0)
-          VULN=$(cat results/*/nuclei.jsonl 2>/dev/null | wc -l 2>/dev/null || echo 0)
+          # Lendo direto dos arquivos descompactados
+          SUBS=$(cat results/subdomains.txt 2>/dev/null | wc -l 2>/dev/null || echo 0)
+          LIVE=$(cat results/live.json 2>/dev/null | wc -l 2>/dev/null || echo 0)
+          VULN=$(cat results/nuclei.jsonl 2>/dev/null | wc -l 2>/dev/null || echo 0)
           
           cat >> stealth-report/STEALTH-RECON.md << TABLE_EOF
           | Metric | Count |
@@ -250,4 +254,3 @@ jobs:
         with:
           name: Final-Stealth-Report
           path: stealth-report/
-
