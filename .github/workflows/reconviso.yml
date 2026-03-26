@@ -20,6 +20,11 @@ on:
           - low
           - normal
         default: low
+      nuclei_severities:
+        description: 'Nuclei Severities (comma-separated)'
+        required: false
+        default: 'info,low,medium,high,critical'
+        type: string
 
 env:
   SCAN_ID: ${{ github.run_id }}
@@ -92,7 +97,7 @@ jobs:
               curl -s "https://crt.sh/?q=%25.$DOMAIN&output=json" | jq -r '.[].name_value' | sed 's/\*\.//g' > output/passive/crtsh.txt || true
               cat output/passive/subfinder.txt output/passive/crtsh.txt | sort -u > output/passive/subdomains.txt
               
-              # 🔥 A CORREÇÃO MÁGICA: GARANTINDO O DOMÍNIO RAIZ 🔥
+              # Garantindo o domínio raiz
               echo $DOMAIN >> output/passive/subdomains.txt
               sort -u output/passive/subdomains.txt -o output/passive/subdomains.txt
               ;;
@@ -160,7 +165,7 @@ jobs:
           name: stealth-active
           path: output/active/
 
-  # 3. STEALTH VULN SCAN (OTIMIZADO SEM HEADLESS)
+  # 3. STEALTH VULN SCAN
   stealth-vuln:
     name: Stealth Vuln Scan
     runs-on: ubuntu-latest
@@ -170,6 +175,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+
+      - name: Cache Nuclei Templates
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/nuclei-templates
+          key: ${{ runner.os }}-nuclei-templates-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-nuclei-templates-
 
       - name: Setup Nuclei
         run: |
@@ -191,19 +204,23 @@ jobs:
           MAX_RATE: ${{ needs.setup.outputs.max_rate }}
           THREADS: 10
           TIMEOUT: 8
+          # Consumindo a variável do input
+          SEVERITIES: ${{ github.event.inputs.nuclei_severities || 'info,low,medium,high,critical' }}
         run: |
           mkdir -p output/vuln
           cat passive-subdomains/subdomains.txt > targets.txt
           cat stealth-active/live.json | jq -r '.url' >> targets.txt 2>/dev/null || true
           sort -u targets.txt -o targets.txt
           
-          # Sem o -headless para ir rápido e pegando infos/lows também
+          # Inserindo o Fail-Fast (-retries 0 -mhe 5) e a severidade dinâmica
           nuclei -l targets.txt \
             -tags misconfiguration,http-headers,cve,file,exposure \
-            -severity info,low,medium,high,critical \
+            -severity $SEVERITIES \
             -c $THREADS \
             -rl $MAX_RATE \
             -timeout $TIMEOUT \
+            -retries 0 \
+            -mhe 5 \
             -silent \
             -jsonl -o output/vuln/nuclei.jsonl
 
@@ -232,11 +249,9 @@ jobs:
           SCAN_ID: ${{ github.run_id }}
         run: |
           mkdir -p stealth-report
-          # Header
           printf "# 🥷 STEALTH RECON REPORT\n**Target:** %s\n**Stealth:** %s\n**Max Rate:** %s req/s\n**Scan ID:** %s\n\n## 📊 SUMMARY\n" \
             "$DOMAIN" "$STEALTH_LEVEL" "$MAX_RATE" "$SCAN_ID" > stealth-report/STEALTH-RECON.md
           
-          # Lendo direto dos arquivos descompactados
           SUBS=$(cat results/subdomains.txt 2>/dev/null | wc -l 2>/dev/null || echo 0)
           LIVE=$(cat results/live.json 2>/dev/null | wc -l 2>/dev/null || echo 0)
           VULN=$(cat results/nuclei.jsonl 2>/dev/null | wc -l 2>/dev/null || echo 0)
