@@ -203,8 +203,7 @@ jobs:
         env:
           MAX_RATE: ${{ needs.setup.outputs.max_rate }}
           THREADS: 10
-          TIMEOUT: 8
-          # Consumindo a variável do input
+          TIMEOUT: 3
           SEVERITIES: ${{ github.event.inputs.nuclei_severities || 'info,low,medium,high,critical' }}
         run: |
           mkdir -p output/vuln
@@ -220,7 +219,7 @@ jobs:
             -rl $MAX_RATE \
             -timeout $TIMEOUT \
             -retries 0 \
-            -mhe 5 \
+            -mhe 15 \
             -silent \
             -jsonl -o output/vuln/nuclei.jsonl
 
