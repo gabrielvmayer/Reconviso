@@ -34,6 +34,11 @@ on:
           - 'Targeted (Inteligente: Adapta os testes à tecnologia do alvo)'
           - 'Full-Aggressive (Lento: Roda todos os milhares de templates)'
         default: Targeted
+      max_targets:
+        description: 'Max Subdomains to Scan (Limit to avoid long runs)'
+        required: false
+        default: '1000'
+        type: string
 
 env:
   SCAN_ID: ${{ github.run_id }}
@@ -155,9 +160,10 @@ jobs:
           THREADS: 10
           TIMEOUT: 5
           DELAY: 1
+          MAX_TARGETS: ${{ github.event.inputs.max_targets || '1000' }}
         run: |
           mkdir -p output/active
-          head -n 1000 passive-subdomains/subdomains.txt | httpx \
+          head -n $MAX_TARGETS passive-subdomains/subdomains.txt | httpx \
             -silent \
             -threads $THREADS \
             -rate-limit $MAX_RATE \
@@ -223,7 +229,6 @@ jobs:
             echo "Rodando modo Discovery (Apenas Exposições)..."
             nuclei -l targets.txt \
               -tags exposure,config \
-              # -tags misconfiguration,http-headers,cve,file,exposure \
               -severity $SEVERITIES \
               -c $THREADS \
               -rl $MAX_RATE \
