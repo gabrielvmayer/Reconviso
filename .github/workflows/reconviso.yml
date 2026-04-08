@@ -25,6 +25,15 @@ on:
         required: false
         default: 'info,low,medium,high,critical'
         type: string
+      scan_mode:
+        description: 'Scan Mode (Noise Filter)'
+        required: true
+        type: choice
+        options:
+          - 'Discovery (Rápido: Apenas arquivos expostos e configs)'
+          - 'Targeted (Inteligente: Adapta os testes à tecnologia do alvo)'
+          - 'Full-Aggressive (Lento: Roda todos os milhares de templates)'
+        default: Targeted
 
 env:
   SCAN_ID: ${{ github.run_id }}
@@ -203,24 +212,54 @@ jobs:
           THREADS: 10
           TIMEOUT: 3
           SEVERITIES: ${{ github.event.inputs.nuclei_severities || 'info,low,medium,high,critical' }}
+          MODE: ${{ github.event.inputs.scan_mode }}
         run: |
           mkdir -p output/vuln
           cat passive-subdomains/subdomains.txt > targets.txt
           cat stealth-active/live.json | jq -r '.url' >> targets.txt 2>/dev/null || true
           sort -u targets.txt -o targets.txt
           
-          # Inserindo o Fail-Fast (-retries 0 -mhe 5) e a severidade dinâmica
-          nuclei -l targets.txt \
-            -tags misconfiguration,http-headers,cve,file,exposure \
-            -severity $SEVERITIES \
-            -c $THREADS \
-            -rl $MAX_RATE \
-            -timeout $TIMEOUT \
-            -retries 0 \
-            -mhe 15 \
-            -silent \
-            -jsonl -o output/vuln/nuclei.jsonl
+          if [[ "$MODE" == *"Discovery"* ]]; then
+            echo "Rodando modo Discovery (Apenas Exposições)..."
+            nuclei -l targets.txt \
+              -tags exposure,config \
+              # -tags misconfiguration,http-headers,cve,file,exposure \
+              -severity $SEVERITIES \
+              -c $THREADS \
+              -rl $MAX_RATE \
+              -timeout $TIMEOUT \
+              -retries 0 \
+              -mhe 15 \
+              -silent \
+              -jsonl -o output/vuln/nuclei.jsonl
+          
+          elif [[ "$MODE" == *"Targeted"* ]]; then
+            echo "Rodando modo Targeted (Automatic Technology Scan)..."
+            nuclei -l targets.txt \
+              -as \
+              -severity $SEVERITIES \
+              -c $THREADS \
+              -rl $MAX_RATE \
+              -timeout $TIMEOUT \
+              -retries 0 \
+              -mhe 15 \
+              -silent \
+              -jsonl -o output/vuln/nuclei.jsonl
 
+          else
+            echo "Rodando modo Full-Aggressive (Vai demorar!)..."
+            nuclei -l targets.txt \
+              -tags misconfiguration,http-headers,cve,file,exposure \
+              -severity $SEVERITIES \
+              -c $THREADS \
+              -rl $MAX_RATE \
+              -timeout $TIMEOUT \
+              -retries 0 \
+              -mhe 15 \
+              -silent \
+              -jsonl -o output/vuln/nuclei.jsonl
+          fi
+            
       - uses: actions/upload-artifact@v4
         with:
           name: stealth-vuln
